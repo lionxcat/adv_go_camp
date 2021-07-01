@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
+	"strconv"
 )
 
 func main() {
@@ -13,12 +14,14 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	filenameReg := regexp.MustCompile(`redis_(\d+)\.txt`)
+	filenameReg := regexp.MustCompile(`payload-(\d+)\.txt`)
+	usedMemReg := regexp.MustCompile(`used_memory_dataset:(\d+)`)
+	keyCntReg := regexp.MustCompile(`key-count:\(integer\) (\d+)`)
 	secondsReg := regexp.MustCompile(`requests completed in (.+) seconds`)
 	throughputReg := regexp.MustCompile(`throughput summary: (.+) requests per second`)
 	latencyReg := regexp.MustCompile(`\s+(\d+\.\d+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+(\d+\.\d+)`)
 
-	fmt.Print("payload")
+	fmt.Print("payload\tused-mem\tkey-count\tanv-key-bytes")
 	fmt.Printf("\t%[1]s-seconds\t%[1]s-throughput\t%[1]s-lat-avg\t%[1]s-lat-min\t%[1]s-lat-p50\t%[1]s-lat-p95\t%[1]s-lat-p99\t%[1]s-lat-max", "set")
 	fmt.Printf("\t%[1]s-seconds\t%[1]s-throughput\t%[1]s-lat-avg\t%[1]s-lat-min\t%[1]s-lat-p50\t%[1]s-lat-p95\t%[1]s-lat-p99\t%[1]s-lat-max", "get")
 	fmt.Println()
@@ -38,6 +41,17 @@ func main() {
 		if err != nil {
 			panic(err.Error())
 		}
+
+		memories := usedMemReg.FindAllStringSubmatch(string(bytes), 2)
+		before, _ := strconv.Atoi(memories[0][1])
+		after, _ := strconv.Atoi(memories[1][1])
+		usedMemory := after - before
+
+		keyCntStr := keyCntReg.FindAllStringSubmatch(string(bytes), 1)
+		keyCnt, _ := strconv.Atoi(keyCntStr[0][1])
+
+		valueMem, _ := strconv.Atoi(payload)
+		anvKeyPerByte := usedMemory/keyCnt - valueMem
 
 		seconds := secondsReg.FindAllStringSubmatch(string(bytes), 2)
 		setSec := seconds[0][1]
@@ -63,7 +77,7 @@ func main() {
 		getLatency["p99"] = latencies[1][5]
 		getLatency["max"] = latencies[1][6]
 
-		fmt.Print(payload)
+		fmt.Printf("%s\t%d\t%d\t%d", payload, usedMemory, keyCnt, anvKeyPerByte)
 		fmt.Printf("\t%s\t%s", setSec, setThroughput)
 		for i := 1; i < 7; i++ {
 			fmt.Printf("\t%s", latencies[0][i])
